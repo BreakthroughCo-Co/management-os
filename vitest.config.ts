@@ -8,7 +8,14 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: './src/test/setup.ts',
-    exclude: ['e2e/**', 'node_modules/**'],
+    // Exclude node_modules AND the functions/ subfolder which has its own test deps
+    exclude: [
+      'e2e/**',
+      'node_modules/**',
+      'functions/**',
+    ],
+    // Only look for tests inside src/
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
   },
   resolve: {
     alias: {
