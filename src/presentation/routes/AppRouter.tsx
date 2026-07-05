@@ -182,7 +182,7 @@ export const AppRouter = () => {
             <Route path="audit" element={<RoleRoute allowed={["Admin"]}><AuditTrail /></RoleRoute>} />
 
             {/* Operations Hub */}
-            <Route path="operations-hub" element={<RoleRoute allowed={["Admin", "Coordinator", "Practice Manager"]}><OperationsHub /></RoleRoute>} />
+            <Route path="operations-hub" element={<RoleRoute allowed={["Admin", "Coordinator", "Practice Manager", "Practitioner"]}><OperationsHub /></RoleRoute>} />
 
             <Route path="settings" element={<SettingsPage />} />
           </Route>

@@ -1,176 +1,174 @@
 rules_version = '2';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Breakthrough Coaching & Consulting — Firestore Security Rules
-// Hardened: role-based access using custom claims set in Firebase Auth.
+// Breakthrough Coaching & Consulting — Firestore Security Rules v2
 //
-// Custom claims expected on request.auth.token:
-//   role: "Admin" | "Coordinator" | "Practice Manager" | "Practitioner" | "Viewer"
+// IMPORTANT: Roles are stored in /users/{uid}.role (Firestore document),
+// NOT in Firebase Auth custom claims. This matches the client-side pattern.
 //
-// Collections & access matrix:
-//   users                 → owner read/write; Admin read all
-//   clients               → Admin/Coordinator/PracticeManager/Practitioner read; Admin/Coordinator write
-//   abcLogs               → Admin/Coordinator/Practitioner read+write; Viewer read
-//   bspPlans              → Admin/Coordinator/Practitioner read+write; Viewer read
-//   ndisPlans             → Admin/Coordinator/PracticeManager read+write; Practitioner read
-//   practitioners         → Admin/Coordinator read+write; Practitioner read own doc
-//   incidents             → Admin/Coordinator/Practitioner create+read; Admin/Coordinator update/delete
-//   auditLogs             → Admin read only (append-only, written by Cloud Functions)
-//   complianceChecklists  → Admin/Coordinator/PracticeManager read+write
-//   serviceAgreements     → Admin/Coordinator/PracticeManager read+write
-//   billingRecords        → Admin/Coordinator/PracticeManager read+write
-//   legoSessions          → Admin/Coordinator/Practitioner read+write
-//   caseNotes             → Admin/Coordinator/Practitioner read+write (owner only for Practitioner)
+// Role values: "Admin" | "Coordinator" | "Practice Manager" | "Practitioner" | "Viewer"
+//
+// Access matrix:
+//   users                 → owner read/write their own doc; Admin reads all
+//   clients               → clinical staff & managers read; Coordinator+ write
+//   abcLogs               → clinical staff read+write; Viewer read
+//   bspPlans              → clinical staff read+write; Viewer read
+//   ndisPlans             → all staff read; Manager+ write
+//   practitioners         → own doc read; Coordinator+ read all; Coordinator+ write
+//   incidents             → clinical staff create+read; Coordinator+ update/delete
+//   auditLogs             → Admin read only (append-only via Cloud Functions)
+//   complianceChecklists  → Manager+ read+write
+//   serviceAgreements     → Manager+ read+write
+//   billingRecords        → Manager+ read+write
+//   legoSessions          → clinical staff read+write; Manager read
+//   caseNotes             → clinical staff read+write (Practitioner: own only)
+//   knowledgeBase         → any auth read; Coordinator+ write
+//   notifications         → owner read; owner update (mark-read); Coordinator+ create
 // ─────────────────────────────────────────────────────────────────────────────
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ── Helper functions ─────────────────────────────────────────────────────
-
+    // ── Helper: is the request from a signed-in user? ─────────────────────────
     function isAuth() {
       return request.auth != null;
     }
 
-    function role() {
-      return request.auth.token.get('role', 'Viewer');
+    // ── Helper: fetch the caller's role from Firestore ────────────────────────
+    // Falls back to "Viewer" if the document doesn't exist yet.
+    function userRole() {
+      return isAuth()
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'Viewer')
+        : 'Viewer';
     }
 
+    // ── Role convenience helpers ──────────────────────────────────────────────
     function isAdmin() {
-      return isAuth() && role() == 'Admin';
+      return userRole() == 'Admin';
     }
 
     function isCoordinator() {
-      return isAuth() && role() in ['Admin', 'Coordinator'];
+      return userRole() in ['Admin', 'Coordinator'];
     }
 
     function isPracticeManager() {
-      return isAuth() && role() in ['Admin', 'Coordinator', 'Practice Manager'];
+      return userRole() in ['Admin', 'Coordinator', 'Practice Manager'];
     }
 
     function isClinicalStaff() {
-      return isAuth() && role() in ['Admin', 'Coordinator', 'Practitioner'];
+      return userRole() in ['Admin', 'Coordinator', 'Practitioner'];
     }
 
     function isAnyStaff() {
-      return isAuth() && role() in ['Admin', 'Coordinator', 'Practice Manager', 'Practitioner'];
+      return userRole() in ['Admin', 'Coordinator', 'Practice Manager', 'Practitioner'];
     }
 
     function isOwner(userId) {
       return isAuth() && request.auth.uid == userId;
     }
 
-    // Validate that only allowed fields are written (prevents field injection)
-    function onlyFields(allowed) {
-      return request.resource.data.keys().hasOnly(allowed);
-    }
-
-    // ── User Profiles ────────────────────────────────────────────────────────
+    // ── User Profiles ─────────────────────────────────────────────────────────
+    // Every authenticated user may read and update their own profile.
+    // Admins may read any user profile. Deletion is Admin-only.
     match /users/{userId} {
-      // Users can read and update their own profile; Admins can read any
-      allow read: if isOwner(userId) || isAdmin();
-      allow create: if isOwner(userId);
+      allow read:   if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isAuth();
       allow update: if isOwner(userId) || isAdmin();
       allow delete: if isAdmin();
     }
 
-    // ── Clients ──────────────────────────────────────────────────────────────
+    // ── Clients ───────────────────────────────────────────────────────────────
     match /clients/{clientId} {
-      allow read: if isClinicalStaff() || isPracticeManager();
+      allow read:          if isClinicalStaff() || isPracticeManager();
       allow create, update: if isCoordinator();
-      allow delete: if isAdmin();
+      allow delete:        if isAdmin();
     }
 
-    // ── ABC Behaviour Logs ───────────────────────────────────────────────────
+    // ── ABC Behaviour Logs ────────────────────────────────────────────────────
     match /abcLogs/{docId} {
-      allow read: if isAnyStaff();
+      allow read:          if isAnyStaff();
       allow create, update: if isClinicalStaff();
-      allow delete: if isCoordinator();
+      allow delete:        if isCoordinator();
     }
 
-    // ── Behaviour Support Plans ──────────────────────────────────────────────
+    // ── Behaviour Support Plans ───────────────────────────────────────────────
     match /bspPlans/{docId} {
-      allow read: if isAnyStaff();
+      allow read:          if isAnyStaff();
       allow create, update: if isClinicalStaff();
-      allow delete: if isCoordinator();
+      allow delete:        if isCoordinator();
     }
 
-    // ── NDIS Plans ───────────────────────────────────────────────────────────
+    // ── NDIS Plans ────────────────────────────────────────────────────────────
     match /ndisPlans/{docId} {
-      // Practitioners can view plan details; managers/coordinators can edit
-      allow read: if isAnyStaff();
+      allow read:          if isAnyStaff();
       allow create, update: if isPracticeManager();
-      allow delete: if isAdmin();
+      allow delete:        if isAdmin();
     }
 
-    // ── Practitioners / Staff ────────────────────────────────────────────────
+    // ── Practitioners / Staff ─────────────────────────────────────────────────
     match /practitioners/{practitionerId} {
-      // Practitioners can read their own profile
-      allow read: if isOwner(practitionerId) || isCoordinator() || isPracticeManager();
+      allow read:          if isOwner(practitionerId) || isPracticeManager();
       allow create, update: if isCoordinator();
-      allow delete: if isAdmin();
+      allow delete:        if isAdmin();
     }
 
-    // ── Incidents ────────────────────────────────────────────────────────────
+    // ── Incidents ─────────────────────────────────────────────────────────────
     match /incidents/{incidentId} {
-      allow read: if isClinicalStaff() || isPracticeManager();
-      // Any clinical staff can file an incident; only managers can update/delete
+      allow read:   if isClinicalStaff() || isPracticeManager();
       allow create: if isClinicalStaff();
       allow update: if isCoordinator();
       allow delete: if isAdmin();
     }
 
-    // ── Audit Logs (append-only via Cloud Functions) ─────────────────────────
+    // ── Audit Logs — append-only via Cloud Functions ──────────────────────────
     match /auditLogs/{logId} {
-      // Only Admins can read; Cloud Functions write (server-side auth bypass not needed)
-      allow read: if isAdmin();
-      allow write: if false; // Written exclusively by backend Cloud Functions
+      allow read:  if isAdmin();
+      allow write: if false; // Cloud Functions only
     }
 
-    // ── Compliance Checklists ────────────────────────────────────────────────
+    // ── Compliance Checklists ─────────────────────────────────────────────────
     match /complianceChecklists/{docId} {
       allow read, write: if isPracticeManager();
     }
 
-    // ── Service Agreements ───────────────────────────────────────────────────
+    // ── Service Agreements ────────────────────────────────────────────────────
     match /serviceAgreements/{docId} {
       allow read, write: if isPracticeManager();
     }
 
-    // ── Billing Records ──────────────────────────────────────────────────────
+    // ── Billing Records ───────────────────────────────────────────────────────
     match /billingRecords/{docId} {
       allow read, write: if isPracticeManager();
     }
 
-    // ── LEGO® Therapy Sessions ───────────────────────────────────────────────
+    // ── LEGO® Therapy Sessions ────────────────────────────────────────────────
     match /legoSessions/{sessionId} {
-      allow read: if isAnyStaff();
+      allow read:          if isAnyStaff();
       allow create, update: if isClinicalStaff();
-      allow delete: if isCoordinator();
+      allow delete:        if isCoordinator();
     }
 
-    // ── Case Notes ───────────────────────────────────────────────────────────
+    // ── Case Notes ────────────────────────────────────────────────────────────
     match /caseNotes/{noteId} {
-      // Practitioners can read and write their own case notes
-      allow read: if isClinicalStaff() || isPracticeManager();
+      allow read:   if isClinicalStaff() || isPracticeManager();
       allow create: if isClinicalStaff();
-      // Practitioners can only update their own notes; coordinators/admins can update any
       allow update: if isCoordinator() ||
-        (isAuth() && role() == 'Practitioner' && resource.data.authorUid == request.auth.uid);
+                       (isAuth() && userRole() == 'Practitioner' &&
+                        resource.data.authorUid == request.auth.uid);
       allow delete: if isCoordinator();
     }
 
-    // ── Knowledge Base Documents ─────────────────────────────────────────────
+    // ── Knowledge Base Documents ──────────────────────────────────────────────
     match /knowledgeBase/{docId} {
-      allow read: if isAuth();
+      allow read:  if isAuth();
       allow write: if isCoordinator();
     }
 
-    // ── Notifications ────────────────────────────────────────────────────────
+    // ── Notifications ─────────────────────────────────────────────────────────
     match /notifications/{notifId} {
-      allow read: if isOwner(resource.data.userId);
+      allow read:   if isAuth() && resource.data.userId == request.auth.uid;
       allow create: if isCoordinator();
-      allow update: if isOwner(resource.data.userId); // allow marking as read
+      allow update: if isAuth() && resource.data.userId == request.auth.uid;
       allow delete: if isAdmin();
     }
 
