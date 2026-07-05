@@ -2,8 +2,7 @@ import { create } from 'zustand';
 import { onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
-
-type Role = 'Admin' | 'Coordinator' | 'Practitioner' | 'Viewer';
+import { Role } from '../shared/constants/roles';
 
 interface AuthState {
   user: {
@@ -94,11 +93,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 if (typeof window !== 'undefined') {
   onAuthStateChanged(auth, async (user) => {
     if (user) {
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
       let userRole: Role = 'Practitioner'; // Default
       
-      if (userDoc.exists() && userDoc.data().role) {
-        userRole = userDoc.data().role as Role;
+      try {
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        if (userDoc.exists() && userDoc.data().role) {
+          userRole = userDoc.data().role as Role;
+        }
+      } catch (firestoreError) {
+        console.error("Firestore error loading user role:", firestoreError);
       }
       
       useAuthStore.setState({
