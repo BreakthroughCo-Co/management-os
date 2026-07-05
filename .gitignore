@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+functions/node_modules/
+
+# Build output
+dist/
+functions/lib/
+
+# Environment & secrets (never commit these)
+.env
+.env.local
+.env.*.local
+
+# Firebase debug logs
+firebase-debug.log
+firebase-debug.*.log
+firestore-debug.log
+ui-debug.log
+database-debug.log
+
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test output
+playwright-report/
+test-results/
+coverage/
+
+# Firebase emulator data
+.firebase/
+
+# Vite cache
+.vite/
