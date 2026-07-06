@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { getFunctions, httpsCallable } from "firebase/functions";
-import app from "@/lib/firebase";
+import { AIService } from "@/core/services/AIService";
 import { Button } from "@/presentation/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/presentation/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/presentation/components/ui/table";
@@ -34,11 +33,13 @@ If no anomalies are found, return an empty array [].
 Claims Data:
 ${JSON.stringify(claims, null, 2)}`;
 
-      const functions = getFunctions(app);
-      const generateGeminiContent = httpsCallable(functions, "generateGeminiContent");
-      const response = await generateGeminiContent({ prompt });
+      const response = await AIService.executePrompt({
+        prompt,
+        context: "",
+        agentId: "finance-assistant"
+      });
       
-      const text = (response.data as any).text?.replace(/```json|```/g, "").trim() || "[]";
+      const text = response.content?.replace(/```json|```/g, "").trim() || "[]";
       const parsed = JSON.parse(text);
       setAnomalies(parsed);
     } catch (err: any) {

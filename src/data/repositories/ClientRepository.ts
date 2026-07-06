@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tansta
 import { Client } from '../../core/models/Client';
 import { db } from '../../lib/firebase';
 import { collection, getDocs, doc, getDoc, addDoc, query, orderBy, limit, startAfter, DocumentSnapshot } from 'firebase/firestore';
+import { useAppStore } from '@/store/useAppStore';
 
 export const useClientsQuery = () => {
   return useQuery({
@@ -48,6 +49,9 @@ export const useCreateClientMutation = () => {
   
   return useMutation({
     mutationFn: async (newClient: Omit<Client, 'id'>) => {
+      if (!navigator.onLine) {
+        useAppStore.getState().incrementPendingSync();
+      }
       const docRef = await addDoc(collection(db, 'clients'), newClient);
       return { id: docRef.id, ...newClient } as Client;
     },

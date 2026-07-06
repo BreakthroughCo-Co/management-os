@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import app from "@/lib/firebase";
+import { workflowEngine } from "@/core/services/WorkflowEngine";
 import { Button } from "@/presentation/components/ui/button";
 import { Input } from "@/presentation/components/ui/input";
 import { Label } from "@/presentation/components/ui/label";
@@ -57,6 +58,7 @@ export function IncidentAnalysis() {
     };
 
     setIncidents([newIncident, ...incidents]);
+    workflowEngine.emit('incident:created', newIncident);
     setClientName("");
     setDescription("");
     setSeverity("Minor");
@@ -139,13 +141,12 @@ Format your output as two short sections:
               </div>
               <div className="space-y-2">
                 <Label htmlFor="description">Event Description</Label>
-                <textarea
+                <Textarea
                   id="description"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   required
                   placeholder="What happened? Include antecedent clues if known."
-                  className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 />
               </div>
               <div className="space-y-2">

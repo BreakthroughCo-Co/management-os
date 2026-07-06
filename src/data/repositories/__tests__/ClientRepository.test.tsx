@@ -15,7 +15,10 @@ vi.mock('firebase/firestore', () => ({
   orderBy: vi.fn(),
   limit: vi.fn(),
   startAfter: vi.fn(),
-  getFirestore: vi.fn()
+  getFirestore: vi.fn(),
+  initializeFirestore: vi.fn(),
+  persistentLocalCache: vi.fn(),
+  persistentMultipleTabManager: vi.fn()
 }));
 
 // Mock Firebase app and auth

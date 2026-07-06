@@ -1,20 +1,28 @@
 import { useState, useEffect } from "react";
 import { Cloud, CloudOff, RefreshCw } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { useAppStore } from "@/store/useAppStore";
 
 export function OfflineSyncManager() {
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const isOffline = useAppStore((state) => state.isOffline);
+  const pendingSyncCount = useAppStore((state) => state.pendingSyncCount);
+  const setOfflineStatus = useAppStore((state) => state.setOfflineStatus);
+  const incrementPendingSync = useAppStore((state) => state.incrementPendingSync);
+  const clearPendingSync = useAppStore((state) => state.clearPendingSync);
+
   const [isSyncing, setIsSyncing] = useState(false);
-  const [pendingChanges, setPendingChanges] = useState(0);
 
   useEffect(() => {
     const handleOnline = () => {
-      setIsOnline(true);
-      if (pendingChanges > 0) {
-        syncData();
+      setOfflineStatus(false);
+      if (pendingSyncCount > 0) {
+        setIsSyncing(true);
+        setTimeout(() => {
+          setIsSyncing(false);
+          clearPendingSync();
+        }, 2000);
       }
     };
-    const handleOffline = () => setIsOnline(false);
+    const handleOffline = () => setOfflineStatus(true);
 
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
@@ -22,7 +30,7 @@ export function OfflineSyncManager() {
     // Simulate some offline changes being queued
     const interval = setInterval(() => {
       if (!navigator.onLine) {
-        setPendingChanges(prev => prev + 1);
+        incrementPendingSync();
       }
     }, 15000);
 
@@ -31,23 +39,14 @@ export function OfflineSyncManager() {
       window.removeEventListener("offline", handleOffline);
       clearInterval(interval);
     };
-  }, [pendingChanges]);
-
-  const syncData = () => {
-    setIsSyncing(true);
-    // Simulate sync delay
-    setTimeout(() => {
-      setIsSyncing(false);
-      setPendingChanges(0);
-    }, 2000);
-  };
+  }, [pendingSyncCount, setOfflineStatus, incrementPendingSync, clearPendingSync]);
 
   return (
     <div className="flex items-center gap-2 text-xs font-medium">
-      {!isOnline ? (
+      {isOffline ? (
         <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-2 py-1 rounded-md border border-amber-200 dark:border-amber-900/50">
           <CloudOff className="h-3.5 w-3.5" />
-          <span>Offline ({pendingChanges} unsaved)</span>
+          <span>Offline ({pendingSyncCount} unsaved)</span>
         </div>
       ) : isSyncing ? (
         <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/30 px-2 py-1 rounded-md border border-blue-200 dark:border-blue-900/50">

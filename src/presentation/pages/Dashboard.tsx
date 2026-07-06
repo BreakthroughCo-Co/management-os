@@ -1,6 +1,8 @@
 import { Activity, Users, FileText, CheckCircle2, TrendingUp } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useDashboardStatsQuery, HeatmapDataPoint, BurnRateGauge } from "@/data/repositories/AnalyticsRepository";
+import { GoogleCalendarWidget } from "../components/workspace/GoogleCalendarWidget";
+import { GoogleDriveWidget } from "../components/workspace/GoogleDriveWidget";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -196,6 +198,12 @@ export function Dashboard() {
             <FundingBurnRateGauge data={data.burnGauge} />
           </div>
         </div>
+      </div>
+
+      {/* Google Workspace Integrations */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <GoogleCalendarWidget />
+        <GoogleDriveWidget />
       </div>
 
       {/* Session Heatmap + Recent Activity */}

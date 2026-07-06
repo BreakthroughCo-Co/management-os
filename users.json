@@ -1,0 +1,12 @@
+{"users": [
+{
+  "localId": "bI3OSSi3SneLGUClk7ziH7PPVmJ2",
+  "email": "admin@breakthroughconsult.com.au",
+  "emailVerified": false,
+  "passwordHash": "Zey0DMObY0OVu6ltDgcVzK3x7Ux545xPgZaguAYIjmZJ//u0Y7WwGyclrdybk3SszBjgjfo3lu9JoWGjY4ATCw==",
+  "salt": "DFlqYsUvo2/SbA==",
+  "lastSignedInAt": "1783261586808",
+  "createdAt": "1783150851643",
+  "disabled": false,
+  "providerUserInfo": []
+}]}

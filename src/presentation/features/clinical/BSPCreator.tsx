@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { getFunctions, httpsCallable } from "firebase/functions";
 import { collection, addDoc } from "firebase/firestore";
 import app, { db, auth } from "@/lib/firebase";
+import { AIService } from "@/core/services/AIService";
 import { Button } from "@/presentation/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/presentation/components/ui/card";
 import { Input } from "@/presentation/components/ui/input";
@@ -65,10 +65,12 @@ Generate a structured BSP with these exact sections:
 Format each section with a bold heading and clear, professional content suitable for submission to the NDIS Commission.`;
 
     try {
-      const functions = getFunctions(app);
-      const generateGeminiContent = httpsCallable(functions, "generateGeminiContent");
-      const response = await generateGeminiContent({ prompt });
-      setGeneratedPlan((response.data as any).text || "Failed to generate plan.");
+      const response = await AIService.executePrompt({
+        prompt,
+        context: "",
+        agentId: "clinical-copilot"
+      });
+      setGeneratedPlan(response.content || "Failed to generate plan.");
     } catch (err) {
       setGeneratedPlan("Error: Could not connect to Gemini.");
     } finally {
@@ -95,11 +97,13 @@ Return ONLY a JSON object with exactly this structure (no other text):
 Score 85-100 if fully compliant. 60-84 for minor issues. Below 60 for major gaps. List 3 specific compliance observations (can be positives or issues).`;
 
     try {
-      const functions = getFunctions(app);
-      const generateGeminiContent = httpsCallable(functions, "generateGeminiContent");
-      const resp = await generateGeminiContent({ prompt: auditPrompt });
+      const response = await AIService.executePrompt({
+        prompt: auditPrompt,
+        context: "",
+        agentId: "clinical-copilot"
+      });
       
-      const text = (resp.data as any).text?.replace(/```json|```/g, "").trim() || "{}";
+      const text = response.content?.replace(/```json|```/g, "").trim() || "{}";
       const parsed = JSON.parse(text);
       setAuditResult({ score: parsed.score ?? 0, issues: parsed.issues ?? [] });
     } catch (err) {

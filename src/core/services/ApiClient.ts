@@ -1,8 +1,18 @@
-import axios from 'axios';
+import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 import { useAuthStore } from '@/store/useAuthStore';
+import { ApiClient as IApiClient } from '../api/ApiClient';
+
+export interface WrappedAxiosInstance extends Omit<AxiosInstance, 'get' | 'post' | 'put' | 'delete' | 'patch' | 'request'>, IApiClient {
+  get<T = any>(url: string, config?: AxiosRequestConfig): Promise<T>;
+  post<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T>;
+  put<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T>;
+  delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<T>;
+  patch<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T>;
+  request<T = any>(config: AxiosRequestConfig): Promise<T>;
+}
 
 // Create an Axios instance
-export const ApiClient = axios.create({
+const instance = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/',
   timeout: 15000,
   headers: {
@@ -11,21 +21,21 @@ export const ApiClient = axios.create({
 });
 
 // Request interceptor
-ApiClient.interceptors.request.use(
+instance.interceptors.request.use(
   (config) => {
-    // You can attach tokens here if interacting with a custom backend
-    // const { googleAccessToken } = useAuthStore.getState();
-    // if (googleAccessToken && config.url?.includes('googleapis')) {
-    //   config.headers['Authorization'] = `Bearer ${googleAccessToken}`;
-    // }
+    // Retrieve googleAccessToken from useAuthStore and attach it as Authorization: Bearer <token>
+    const { googleAccessToken } = useAuthStore.getState();
+    if (googleAccessToken && config.url?.includes('googleapis')) {
+      config.headers['Authorization'] = `Bearer ${googleAccessToken}`;
+    }
     return config;
   },
   (error) => Promise.reject(error)
 );
 
 // Response interceptor
-ApiClient.interceptors.response.use(
-  (response) => response,
+instance.interceptors.response.use(
+  (response) => response.data,
   (error) => {
     if (error.response && error.response.status === 401) {
       console.warn("401 Unauthorized - Token expired or invalid.");
@@ -41,3 +51,7 @@ ApiClient.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+export const ApiClient = instance as unknown as WrappedAxiosInstance;
+
+

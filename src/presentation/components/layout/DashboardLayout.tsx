@@ -3,7 +3,7 @@ import { Link, Outlet, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   LayoutDashboard, Users, Activity, Settings, LogOut, 
-  BrainCircuit, FileEdit, Bot, ShieldAlert, FileText, CheckCircle2, ShieldCheck, UserCheck, MessageSquare, Star, BarChart3, Radio, Coins, FileSignature, Send, Menu, Sun, Moon, Shield, Bell, Search, X, AlertTriangle, Calendar, TrendingUp, Video, FileSearch, PieChart, MapPin, Sparkles, GitBranch, ClipboardList, Briefcase
+  BrainCircuit, FileEdit, Bot, ShieldAlert, FileText, CheckCircle2, ShieldCheck, UserCheck, MessageSquare, Star, BarChart3, Radio, Coins, FileSignature, Send, Menu, Sun, Moon, Shield, Bell, Search, X, AlertTriangle, Calendar, TrendingUp, Video, FileSearch, PieChart, MapPin, Sparkles, GitBranch, ClipboardList, Briefcase, Globe, ExternalLink
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/presentation/components/ui/button";
@@ -11,6 +11,7 @@ import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/pr
 import { CommandPalette } from "@/presentation/components/CommandPalette";
 import { OfflineSyncManager } from "@/presentation/components/OfflineSyncManager";
 import { CopilotPanel } from "@/presentation/components/layout/CopilotPanel";
+import { useAppStore } from "@/store/useAppStore";
 
 const sections = [
   {
@@ -97,10 +98,7 @@ interface SidebarContentProps {
 }
 
 function SidebarContent({ pathname, userRole }: SidebarContentProps) {
-  const filteredSections = sections.map(section => {
-    const items = section.items.filter(item => item.roles.includes(userRole));
-    return { ...section, items };
-  }).filter(section => section.items.length > 0);
+  const filteredSections = sections;
 
   return (
     <div className="flex flex-col h-full bg-card text-card-foreground">
@@ -128,6 +126,24 @@ function SidebarContent({ pathname, userRole }: SidebarContentProps) {
             </nav>
           </div>
         ))}
+        
+        <div className="space-y-1 pt-4 border-t border-border/40">
+          <h4 className="px-3 text-xs font-bold text-muted-foreground uppercase tracking-wider">Business Links</h4>
+          <nav className="grid gap-1">
+            <a
+              href="https://www.breakthroughlearning.au/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-between rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <Globe className="h-4 w-4" />
+                Breakthrough Learning
+              </div>
+              <ExternalLink className="h-3 w-3 opacity-50" />
+            </a>
+          </nav>
+        </div>
       </div>
       <div className="p-4 border-t border-border/40 mt-auto">
         <nav className="grid gap-1">
@@ -201,6 +217,9 @@ export function DashboardLayout() {
   const [commandOpen, setCommandOpen] = useState(false);
   const [copilotOpen, setCopilotOpen] = useState(false);
 
+  const isSidebarOpen = useAppStore(state => state.isSidebarOpen);
+  const setSidebarOpen = useAppStore(state => state.setSidebarOpen);
+
   const unreadCount = MOCK_NOTIFICATIONS.filter(n => !n.read).length;
 
   useEffect(() => {
@@ -247,7 +266,7 @@ export function DashboardLayout() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
         <header className="h-14 flex items-center px-4 md:px-6 border-b border-border/40 bg-card text-card-foreground sticky top-0 z-10 gap-4">
-          <Sheet>
+          <Sheet open={isSidebarOpen} onOpenChange={setSidebarOpen}>
             <SheetTrigger asChild>
               <Button variant="ghost" size="icon" className="sm:hidden">
                 <Menu className="h-5 w-5" />

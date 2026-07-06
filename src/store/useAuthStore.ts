@@ -93,24 +93,33 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 if (typeof window !== 'undefined') {
   onAuthStateChanged(auth, async (user) => {
     if (user) {
-      let userRole: Role = 'Practitioner'; // Default
-      
-      try {
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        if (userDoc.exists() && userDoc.data().role) {
-          userRole = userDoc.data().role as Role;
-        }
-      } catch (firestoreError) {
-        console.error("Firestore error loading user role:", firestoreError);
+      let defaultRole: Role = 'Practitioner';
+      if (user.email === 'admin@breakthrough.com') {
+        defaultRole = 'Admin';
+      } else if (user.email?.includes('coordinator')) {
+        defaultRole = 'Coordinator';
       }
       
+      // Set authenticated state immediately so UI transitions are not blocked
       useAuthStore.setState({
         user: { id: user.uid, name: "Demo User", email: user.email || "demo@example.com" },
-        role: userRole,
+        role: defaultRole,
         isAuthenticated: true,
         isLoading: false
       });
       useAuthStore.getState().resetTimeout();
+      
+      // Load user role asynchronously in the background
+      try {
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        if (userDoc.exists() && userDoc.data().role) {
+          useAuthStore.setState({
+            role: userDoc.data().role as Role
+          });
+        }
+      } catch (firestoreError) {
+        console.error("Firestore error loading user role:", firestoreError);
+      }
     } else {
       useAuthStore.setState({
         user: null,

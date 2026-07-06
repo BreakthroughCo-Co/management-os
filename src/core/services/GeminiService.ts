@@ -1,6 +1,7 @@
 import { getFunctions, httpsCallable } from "firebase/functions";
 import app from "../../lib/firebase";
 import { DocumentMetadata } from "../models/Document";
+import { AnonymizerService } from "./AnonymizerService";
 
 export class GeminiService {
   private history: any[] = [];
@@ -24,12 +25,13 @@ export class GeminiService {
   }
 
   async sendMessage(msg: string): Promise<string> {
+    const scrubbedMsg = AnonymizerService.scrub(msg);
     const functions = getFunctions(app);
     const generateGeminiContent = httpsCallable(functions, "generateGeminiContent");
     
     try {
       const result = await generateGeminiContent({
-        prompt: msg,
+        prompt: scrubbedMsg,
         systemInstruction: this.systemInstruction,
         temperature: 0.2,
         history: this.history,
@@ -38,7 +40,7 @@ export class GeminiService {
       const responseText = (result.data as any).text || "";
       
       // Update history
-      this.history.push({ role: "user", parts: [{ text: msg }] });
+      this.history.push({ role: "user", parts: [{ text: scrubbedMsg }] });
       this.history.push({ role: "model", parts: [{ text: responseText }] });
       
       return responseText;

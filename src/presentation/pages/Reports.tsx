@@ -20,6 +20,8 @@ export function Reports() {
     { name: "Restrictive Practices Audit - June", type: "Compliance", date: "2026-07-01", recipient: "NDS Auditing Board", status: "Approved" },
     { name: "Participant Rollover Review - Charlie Davis", type: "Internal Review", date: "2026-06-15", recipient: "Clinical Lead", status: "Draft" }
   ]);
+  
+  const [compilingStep, setCompilingStep] = useState<null | "Drafting" | "Compliance Auditing" | "Compiling">(null);
 
   const kpis = [
     { label: "Active Clients", value: "142", icon: Users, color: "text-blue-500" },
@@ -30,17 +32,80 @@ export function Reports() {
 
   const printReport = () => window.print();
 
+  const startMultiAgentCompilation = () => {
+    setCompilingStep("Drafting");
+    
+    setTimeout(() => {
+      setCompilingStep("Compliance Auditing");
+      
+      setTimeout(() => {
+        setCompilingStep("Compiling");
+        
+        setTimeout(() => {
+          setCompilingStep(null);
+          // Add compiled report to reports list
+          const newReport = {
+            name: "AI Compiled Therapy Report - Charlie Davis",
+            type: "Clinical",
+            date: new Date().toISOString().split('T')[0],
+            recipient: "NDIS Commission (Portal Upload)",
+            status: "Approved"
+          };
+          setReports(prev => [newReport, ...prev]);
+        }, 1500);
+      }, 1500);
+    }, 1500);
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center flex-wrap gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Reports Distribution Hub</h2>
           <p className="text-muted-foreground">Compile, audit, and distribute mandatory compliance and progress reports.</p>
         </div>
-        <Button onClick={printReport} className="bg-primary hover:opacity-90">
-          <Printer className="mr-2 h-4 w-4" /> Print Executive Summary
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            onClick={startMultiAgentCompilation} 
+            disabled={compilingStep !== null}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium shadow-sm transition-colors"
+          >
+            Compile NDIS Progress Report (Multi-Agent)
+          </Button>
+          <Button onClick={printReport} variant="outline" className="border-border">
+            <Printer className="mr-2 h-4 w-4" /> Print Executive Summary
+          </Button>
+        </div>
       </div>
+
+      {compilingStep && (
+        <Card className="border-indigo-500/20 bg-indigo-50/10 p-4">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <h4 className="font-semibold text-sm text-indigo-900 dark:text-indigo-200">NDIS Multi-Agent Report Compiler</h4>
+              <Badge variant="outline" className="animate-pulse bg-indigo-100 text-indigo-800 border-indigo-200">
+                {compilingStep}
+              </Badge>
+            </div>
+            <div className="flex items-center gap-6 text-xs font-medium">
+              <div className={`flex items-center gap-2 ${compilingStep === 'Drafting' ? 'text-indigo-600 font-bold' : 'text-muted-foreground'}`}>
+                <div className={`h-2.5 w-2.5 rounded-full ${compilingStep === 'Drafting' ? 'bg-indigo-600 animate-ping' : 'bg-slate-300'}`} />
+                Drafting
+              </div>
+              <div className="text-muted-foreground">&rarr;</div>
+              <div className={`flex items-center gap-2 ${compilingStep === 'Compliance Auditing' ? 'text-indigo-600 font-bold' : 'text-muted-foreground'}`}>
+                <div className={`h-2.5 w-2.5 rounded-full ${compilingStep === 'Compliance Auditing' ? 'bg-indigo-600 animate-ping' : 'bg-slate-300'}`} />
+                Compliance Auditing
+              </div>
+              <div className="text-muted-foreground">&rarr;</div>
+              <div className={`flex items-center gap-2 ${compilingStep === 'Compiling' ? 'text-indigo-600 font-bold' : 'text-muted-foreground'}`}>
+                <div className={`h-2.5 w-2.5 rounded-full ${compilingStep === 'Compiling' ? 'bg-indigo-600 animate-ping' : 'bg-slate-300'}`} />
+                Compiling
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Executive Summary Section (print-friendly) */}
       <Card className="border-2 border-primary/20 bg-primary/5 dark:bg-primary/10">

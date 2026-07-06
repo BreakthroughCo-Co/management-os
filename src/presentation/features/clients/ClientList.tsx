@@ -78,9 +78,17 @@ export function ClientList() {
           <h2 className="text-2xl font-bold tracking-tight">Clients</h2>
           <p className="text-muted-foreground">Manage your participant roster, intake status, risk flags, and funding.</p>
         </div>
-        <Button asChild>
-          <Link to="/clients/intake"><Plus className="mr-2 h-4 w-4" />New Client</Link>
-        </Button>
+        <div className="flex gap-2">
+          <Button asChild variant="outline" className="border-emerald-600 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/20">
+            <Link to="/clients/new">
+              <Plus className="mr-2 h-4 w-4" />
+              Add Manual Client
+            </Link>
+          </Button>
+          <Button asChild>
+            <Link to="/clients/intake"><Plus className="mr-2 h-4 w-4" />New Client</Link>
+          </Button>
+        </div>
       </div>
 
       {/* Risk Summary Strip */}

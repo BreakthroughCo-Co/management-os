@@ -3,6 +3,7 @@ import { collection, addDoc, query, onSnapshot, orderBy } from "firebase/firesto
 import { getFunctions, httpsCallable } from "firebase/functions";
 import app, { db, auth } from "@/lib/firebase";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/presentation/components/ui/card";
+import { useAppStore } from "@/store/useAppStore";
 import { Button } from "@/presentation/components/ui/button";
 import { Label } from "@/presentation/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/presentation/components/ui/select";
@@ -78,6 +79,12 @@ export function CaseNotes() {
   const handleSave = async () => {
     if (!clientName || !rawNote) return;
     setSaving(true);
+
+    const isOffline = !navigator.onLine || useAppStore.getState().isOffline;
+    if (isOffline) {
+      useAppStore.getState().incrementPendingSync();
+    }
+
     try {
       await addDoc(collection(db, "caseNotes"), {
         clientName,

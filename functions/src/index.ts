@@ -1,5 +1,8 @@
 import * as functions from "firebase-functions";
+import * as admin from "firebase-admin";
 import { GoogleGenAI } from "@google/genai";
+
+admin.initializeApp();
 
 // We require the GEMINI_API_KEY to be available in the environment.
 // For production, you would set this via Firebase Secret Manager.
@@ -76,5 +79,26 @@ export const generateGeminiEmbedding = functions.https.onCall(async (data, conte
   } catch (error: any) {
     console.error("Gemini Embedding Error:", error);
     throw new functions.https.HttpsError("internal", error.message || "Failed to generate embedding.");
+  }
+});
+
+export const writeAuditLog = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError(
+      "unauthenticated",
+      "User must be logged in to write audit logs."
+    );
+  }
+
+  try {
+    const logEntry = data;
+    const docRef = await admin.firestore().collection("auditLogs").add(logEntry);
+    return { success: true, id: docRef.id };
+  } catch (error: any) {
+    console.error("Write Audit Log Error:", error);
+    throw new functions.https.HttpsError(
+      "internal",
+      error.message || "Failed to write audit log."
+    );
   }
 });

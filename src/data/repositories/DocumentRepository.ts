@@ -40,6 +40,11 @@ export const useUploadDocumentMutation = () => {
         textContent = await file.text();
       }
 
+      // Validate document content is not empty
+      if (!textContent || !textContent.trim()) {
+        throw new Error('Rejected: Document cannot be empty or only whitespace.');
+      }
+
       // 3. Generate Embedding using Gemini
       let embedding: number[] = [];
       try {
@@ -66,6 +71,48 @@ export const useUploadDocumentMutation = () => {
       };
 
       const docRef = await addDoc(collection(db, 'documents'), docData);
+
+      // Recursive document chunking
+      const chunks: string[] = [];
+      if (textContent) {
+        let index = 0;
+        const chunkSize = 800;
+        const overlap = 100;
+        while (index < textContent.length) {
+          const chunk = textContent.slice(index, index + chunkSize);
+          chunks.push(chunk);
+          index += chunkSize - overlap;
+          if (chunkSize <= overlap) {
+            break;
+          }
+        }
+      }
+
+      try {
+        const functions = getFunctions(app);
+        const generateGeminiEmbedding = httpsCallable(functions, "generateGeminiEmbedding");
+
+        for (let i = 0; i < chunks.length; i++) {
+          const chunkText = chunks[i];
+          let chunkEmbedding: number[] = [];
+          try {
+            const embedResponse = await generateGeminiEmbedding({ text: chunkText });
+            chunkEmbedding = (embedResponse.data as any).embedding || [];
+          } catch (err) {
+            console.error(`Failed to generate embedding for chunk ${i}:`, err);
+          }
+
+          await addDoc(collection(db, 'documents', docRef.id, 'chunks'), {
+            text: chunkText,
+            embedding: chunkEmbedding,
+            allowedRoles,
+            documentName: file.name,
+          });
+        }
+      } catch (chunkErr) {
+        console.error("Error creating chunks:", chunkErr);
+      }
+
       return { id: docRef.id, ...docData } as DocumentMetadata;
     },
     onSuccess: () => {
@@ -96,15 +143,64 @@ export const searchSimilarDocuments = async (queryText: string, documents: Docum
     
     if (queryEmbedding.length === 0) return [];
 
-    const scoredDocs = documents
-      .filter(doc => doc.embedding && doc.embedding.length > 0)
-      .map(doc => ({
-        doc,
-        score: cosineSimilarity(queryEmbedding, doc.embedding!)
+    const allChunks: { text: string; embedding: number[]; allowedRoles: string[]; documentName: string; score?: number }[] = [];
+    for (const docObj of documents) {
+      try {
+        const chunksSnapshot = await getDocs(collection(db, 'documents', docObj.id, 'chunks'));
+        chunksSnapshot.forEach(chunkDoc => {
+          const data = chunkDoc.data();
+          allChunks.push({
+            text: data.text || "",
+            embedding: data.embedding || [],
+            allowedRoles: data.allowedRoles || docObj.allowedRoles || [],
+            documentName: data.documentName || docObj.name || "",
+          });
+        });
+      } catch (err) {
+        console.error(`Failed to fetch chunks for document ${docObj.id}:`, err);
+      }
+    }
+
+    // In-memory simulation/fallback if no chunks exist in DB yet
+    if (allChunks.length === 0) {
+      for (const docObj of documents) {
+        if (docObj.textContent) {
+          const text = docObj.textContent;
+          let start = 0;
+          const size = 800;
+          const overlap = 100;
+          while (start < text.length) {
+            const chunkTextContent = text.substring(start, start + size);
+            allChunks.push({
+              text: chunkTextContent,
+              embedding: docObj.embedding || [],
+              allowedRoles: docObj.allowedRoles || [],
+              documentName: docObj.name,
+            });
+            start += (size - overlap);
+            if (size <= overlap) break;
+          }
+        }
+      }
+    }
+
+    const scoredChunks = allChunks
+      .filter(chunk => chunk.embedding && chunk.embedding.length > 0)
+      .map(chunk => ({
+        chunk,
+        score: cosineSimilarity(queryEmbedding, chunk.embedding)
       }))
       .sort((a, b) => b.score - a.score);
 
-    return scoredDocs.slice(0, topK).map(res => res.doc);
+    return scoredChunks.slice(0, topK).map(res => ({
+      text: res.chunk.text,
+      textContent: res.chunk.text,
+      embedding: res.chunk.embedding,
+      allowedRoles: res.chunk.allowedRoles,
+      documentName: res.chunk.documentName,
+      name: res.chunk.documentName,
+      score: res.score,
+    }));
   } catch (err) {
     console.error("Semantic search failed:", err);
     return [];
