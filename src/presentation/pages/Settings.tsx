@@ -57,7 +57,11 @@ export function SettingsPage() {
     if (!newRole) return;
     setSavingUserId(userId);
     try {
-      await setDoc(doc(db, "users", userId), { role: newRole }, { merge: true });
+      await setDoc(
+        doc(db, "users", userId),
+        { role: newRole, roleChangedBy: user?.id ?? "unknown" },
+        { merge: true }
+      );
       setManagedUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u)));
       setSavedUserId(userId);
       setTimeout(() => setSavedUserId(null), 3000);

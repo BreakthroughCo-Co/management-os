@@ -102,3 +102,43 @@ export const writeAuditLog = functions.https.onCall(async (data, context) => {
     );
   }
 });
+
+// ── Role-change auditing ──────────────────────────────────────────────────
+// Roles are stored on /users/{userId}.role and read live by firestore.rules
+// for every permission check (see PROJECT.md M4 decision note), which makes
+// this field unusually sensitive — a single write can change what a user
+// can do system-wide. This trigger runs with trusted admin privileges
+// (bypassing firestore.rules) and cannot be spoofed or skipped by the
+// client, unlike the writeAuditLog callable above which trusts whatever
+// the caller sends it.
+//
+// Settings.tsx's admin-only role-management panel writes `roleChangedBy`
+// (the acting Admin's uid) alongside `role` in the same setDoc call, so we
+// can attribute who made the change; if that field is missing (e.g. a
+// direct API/console edit) we log 'unknown' rather than fail the write.
+export const logRoleChange = functions.firestore
+  .document("users/{userId}")
+  .onUpdate(async (change, context) => {
+    const before = change.before.data();
+    const after = change.after.data();
+
+    if (before.role === after.role) {
+      return null; // no role change — nothing to log
+    }
+
+    try {
+      await admin.firestore().collection("auditLogs").add({
+        type: "role_change",
+        userId: context.params.userId,
+        previousRole: before.role ?? null,
+        newRole: after.role ?? null,
+        changedBy: after.roleChangedBy ?? "unknown",
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    } catch (error) {
+      // Never let audit-log failures block or retry the underlying role
+      // change — log the failure server-side instead.
+      console.error("Failed to write role-change audit log:", error);
+    }
+    return null;
+  });
