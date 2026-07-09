@@ -20,16 +20,16 @@ export const generateGeminiContent = functions.https.onCall(async (data, context
 
   try {
     const { prompt, systemInstruction, temperature, responseSchema, history } = data;
-    
+
     // We can extract system instruction if provided, otherwise default to a simple assistant.
     const config: any = {
       temperature: temperature || 0.7,
     };
-    
+
     if (systemInstruction) {
       config.systemInstruction = systemInstruction;
     }
-    
+
     if (responseSchema) {
       config.responseMimeType = "application/json";
       config.responseSchema = responseSchema;
@@ -37,9 +37,9 @@ export const generateGeminiContent = functions.https.onCall(async (data, context
 
     const request: any = {
       model: "gemini-2.5-flash",
-      config: config
+      config: config,
     };
-    
+
     const userParts = Array.isArray(prompt) ? prompt : [{ text: prompt }];
 
     if (history && Array.isArray(history)) {
@@ -68,13 +68,13 @@ export const generateGeminiEmbedding = functions.https.onCall(async (data, conte
   try {
     const { text } = data;
     if (!text) throw new Error("No text provided for embedding.");
-    
+
     // We use text-embedding-004 model
     const response = await ai.models.embedContent({
       model: "text-embedding-004",
       contents: text,
     });
-    
+
     return { embedding: response.embeddings?.[0]?.values || [] };
   } catch (error: any) {
     console.error("Gemini Embedding Error:", error);
