@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Claim } from '../../core/models/Claim';
 import { db } from '../../lib/firebase';
-import { collection, getDocs, doc, getDoc, addDoc, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, addDoc, runTransaction } from 'firebase/firestore';
 import { useAppStore } from '@/store/useAppStore';
 import { workflowEngine } from '@/core/services/WorkflowEngine';
 
@@ -30,7 +30,17 @@ export const useApproveClaimMutation = () => {
         useAppStore.getState().incrementPendingSync();
       }
       const cRef = doc(db, 'claims', claimId);
-      await updateDoc(cRef, { status: "Approved" });
+      await runTransaction(db, async (transaction) => {
+        const snap = await transaction.get(cRef);
+        if (!snap.exists()) {
+          throw new Error(`Claim ${claimId} does not exist`);
+        }
+        const currentStatus = (snap.data() as ExtendedClaim).status;
+        if (['Approved', 'Submitted', 'Paid', 'Rejected'].includes(currentStatus)) {
+          throw new Error(`Claim ${claimId} is already finalized as "${currentStatus}" and cannot be approved`);
+        }
+        transaction.update(cRef, { status: 'Approved' });
+      });
     },
     onSuccess: (_data, claimId) => {
       queryClient.invalidateQueries({ queryKey: ['claims'] });
@@ -47,7 +57,17 @@ export const useRejectClaimMutation = () => {
         useAppStore.getState().incrementPendingSync();
       }
       const cRef = doc(db, 'claims', claimId);
-      await updateDoc(cRef, { status: "Rejected" });
+      await runTransaction(db, async (transaction) => {
+        const snap = await transaction.get(cRef);
+        if (!snap.exists()) {
+          throw new Error(`Claim ${claimId} does not exist`);
+        }
+        const currentStatus = (snap.data() as ExtendedClaim).status;
+        if (['Approved', 'Submitted', 'Paid', 'Rejected'].includes(currentStatus)) {
+          throw new Error(`Claim ${claimId} is already finalized as "${currentStatus}" and cannot be rejected`);
+        }
+        transaction.update(cRef, { status: 'Rejected' });
+      });
     },
     onSuccess: (_data, claimId) => {
       queryClient.invalidateQueries({ queryKey: ['claims'] });
