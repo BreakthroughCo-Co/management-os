@@ -70,10 +70,16 @@ service cloud.firestore {
     // ── User Profiles ─────────────────────────────────────────────────────────
     // Every authenticated user may read and update their own profile.
     // Admins may read any user profile. Deletion is Admin-only.
+    // SECURITY: owners may NOT change their own `role` field — only Admins can.
+    // Since userRole() reads this doc live, an unrestricted self-update here
+    // would let any signed-in user grant themselves Admin.
     match /users/{userId} {
       allow read:   if isOwner(userId) || isAdmin();
-      allow create: if isOwner(userId) && isAuth();
-      allow update: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isAuth() &&
+                       request.resource.data.role == 'Viewer';
+      allow update: if isAdmin() ||
+                       (isOwner(userId) &&
+                        request.resource.data.role == resource.data.role);
       allow delete: if isAdmin();
     }
 
@@ -154,7 +160,8 @@ service cloud.firestore {
       allow create: if isClinicalStaff();
       allow update: if isCoordinator() ||
                        (isAuth() && userRole() == 'Practitioner' &&
-                        resource.data.authorUid == request.auth.uid);
+                        resource.data.authorUid == request.auth.uid &&
+                        request.resource.data.authorUid == resource.data.authorUid);
       allow delete: if isCoordinator();
     }
 
@@ -165,10 +172,13 @@ service cloud.firestore {
     }
 
     // ── Notifications ─────────────────────────────────────────────────────────
+    // Owners may only toggle their own notification's `read` flag — not
+    // rewrite its content (title, body, userId, etc).
     match /notifications/{notifId} {
       allow read:   if isAuth() && resource.data.userId == request.auth.uid;
       allow create: if isCoordinator();
-      allow update: if isAuth() && resource.data.userId == request.auth.uid;
+      allow update: if isAuth() && resource.data.userId == request.auth.uid &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
       allow delete: if isAdmin();
     }
 
