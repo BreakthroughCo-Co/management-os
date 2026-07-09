@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Practitioner } from '../../core/models/Practitioner';
 import { db } from '../../lib/firebase';
-import { collection, getDocs, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, runTransaction } from 'firebase/firestore';
 
 export interface ExtendedPractitioner extends Practitioner {
   specialties: string[];
@@ -105,16 +105,19 @@ export const useToggleTaskMutation = () => {
   return useMutation({
     mutationFn: async ({ practitionerId, taskId }: { practitionerId: string, taskId: string }) => {
       const pRef = doc(db, 'practitioners', practitionerId);
-      const snapshot = await getDoc(pRef);
-      if (snapshot.exists()) {
+      await runTransaction(db, async (transaction) => {
+        const snapshot = await transaction.get(pRef);
+        if (!snapshot.exists()) {
+          return;
+        }
         const p = snapshot.data() as ExtendedPractitioner;
         const tasks = [...p.onboardingTasks];
         const task = tasks.find(t => t.id === taskId);
         if (task) {
           task.done = !task.done;
-          await updateDoc(pRef, { onboardingTasks: tasks });
+          transaction.update(pRef, { onboardingTasks: tasks });
         }
-      }
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['practitioners'] });
