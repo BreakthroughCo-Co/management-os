@@ -5,7 +5,7 @@ Management OS is a React SPA built with Vite, TypeScript, TailwindCSS, and Radix
 - **Frontend Layer**: React, TailwindCSS, Radix UI. Uses Zustand for global client state.
 - **Service Layer**: Core business services in `src/core/services/` (AI, RAG, API Clients, Google Workspace, Workflow, Audit Logs, Anonymization).
 - **Repository Layer**: Data access repositories in `src/data/repositories/` (Claims, Clients, Practitioners, Calendar).
-- **Backend Layer**: Firebase Auth (Roles via Custom Claims), Firestore database, Cloud Functions (for AI content/embedding, metrics aggregation, user roles sync).
+- **Backend Layer**: Firebase Auth (identity only), Firestore database (roles stored on `/users/{uid}.role`, read live by Firestore Security Rules — deliberately not mirrored to Auth Custom Claims, see M4 decision note), Cloud Functions (for AI content/embedding, metrics aggregation).
 
 ## Milestones
 | # | Name | Scope | Dependencies | Status |
@@ -13,7 +13,7 @@ Management OS is a React SPA built with Vite, TypeScript, TailwindCSS, and Radix
 | 1 | M1: Codebase Remediation | Wire and reactivate the 10 dead/unused files (ApiClient, useAppStore, IncidentAnalysis, ClientIntake, AIService, AnonymizerService, AuditLoggerService, WorkflowEngine, textarea) | None | DONE (Conv IDs: fff00af2-bde4-4612-8b24-cde53d0eeee5, 86572a54-d57d-46f4-bec0-13bedae3c11c, 2512155c-067b-4e72-a267-e57ec1564dfb, 868346e6-f259-4281-959c-bc8e990baff2) |
 | 2 | M2: PWA & Offline Support | Setup service worker with `vite-plugin-pwa`, enable Firestore persistence, wire status notifications, and push messages | M1 | DONE (Conv ID: a96ad873-58b7-42e4-a14d-aadb859f8391) |
 | 3 | M3: Advanced AI & RAG | Implement document recursive chunking, embedding generation (`text-embedding-004`), vector search, and assistant integration | M1 | DONE (Conv ID: 15fd4bcf-378c-47ff-960f-03f4a37f5c22) |
-| 4 | M4: Deep Security & Transactions | Migrate writes to Firestore Transactions, sync auth Custom Claims with user roles, secure Firestore rules | M1 | PLANNED |
+| 4 | M4: Deep Security & Transactions | Migrate writes to Firestore Transactions (fix ClaimRepository and audit other repositories for the same pattern), harden Firestore Security Rules (append-only auditLogs, tighten Viewer write paths). **Decision (2026-07): roles remain Firestore-doc-based (`/users/{uid}.role`), not synced to Auth Custom Claims** — live rule evaluation and no token-refresh lag outweigh the marginal read-cost savings custom claims would give at this scale. | M1 | IN PROGRESS |
 | 5 | M5: Analytics & Reporting | Server-side metrics aggregation via Cloud Functions, CSV/PDF printable export tables | M1 | PLANNED |
 | 6 | M6: Telehealth & Client Portal | Implement secure Client role, restricted dashboard views/messaging, expose consult links, integrate client intake | M1, M2, M4 | PLANNED |
 | 7 | M7: E2E Integration & Verification | Pass 100% of E2E tests (Tiers 1-4) and perform Adversarial Coverage Hardening (Tier 5) | M1-M6 | PLANNED |
