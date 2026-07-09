@@ -104,8 +104,7 @@ export function Login() {
             onClick={async () => {
               try {
                 setLoading(true);
-                // Default role assignment for Google Sign-In, could be dynamic
-                await useAuthStore.getState().loginWithGoogle('Admin');
+                await useAuthStore.getState().loginWithGoogle();
                 navigate("/dashboard");
               } catch (err: any) {
                 setError(err.message || "Google Authentication failed");

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { collection, doc, getDocs, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuthStore } from "@/store/useAuthStore";
 import { ROLES, Role } from "@/shared/constants/roles";
@@ -11,8 +11,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/presentation/compone
 import { Badge } from "@/presentation/components/ui/badge";
 import { Save, Building2, Bell, User, CheckCircle2, Network, Plus, Shield, Loader2, AlertCircle } from "lucide-react";
 
+interface ManagedUser {
+  id: string;
+  email?: string;
+  role: Role;
+}
+
 export function SettingsPage() {
   const { user, role: currentRole } = useAuthStore();
+  const isAdmin = currentRole === "Admin";
 
   // ── Profile tab ─────────────────────────────────────────────────────────
   const [profile, setProfile] = useState({
@@ -20,34 +27,44 @@ export function SettingsPage() {
     email: user?.email ?? "admin@breakthroughconsult.com.au",
   });
 
-  // ── Role tab ─────────────────────────────────────────────────────────────
-  const [selectedRole, setSelectedRole] = useState<Role>(currentRole ?? "Practitioner");
-  const [roleSaving, setRoleSaving] = useState(false);
-  const [roleError, setRoleError] = useState("");
-  const [roleSaved, setRoleSaved] = useState(false);
+  // ── Role tab: Admin user-management state ────────────────────────────────
+  const [managedUsers, setManagedUsers] = useState<ManagedUser[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [usersError, setUsersError] = useState("");
+  const [pendingRoles, setPendingRoles] = useState<Record<string, Role>>({});
+  const [savingUserId, setSavingUserId] = useState<string | null>(null);
+  const [savedUserId, setSavedUserId] = useState<string | null>(null);
 
-  // Sync selectedRole if Zustand role changes (e.g. after re-auth)
   useEffect(() => {
-    if (currentRole) setSelectedRole(currentRole);
-  }, [currentRole]);
+    if (!isAdmin) return;
+    setUsersLoading(true);
+    setUsersError("");
+    getDocs(collection(db, "users"))
+      .then((snapshot) => {
+        const users = snapshot.docs.map((d) => ({
+          id: d.id,
+          email: d.data().email as string | undefined,
+          role: (d.data().role as Role) ?? "Viewer",
+        }));
+        setManagedUsers(users);
+      })
+      .catch((err) => setUsersError(err.message ?? "Failed to load users."))
+      .finally(() => setUsersLoading(false));
+  }, [isAdmin]);
 
-  const handleRoleSave = async () => {
-    if (!user?.id) {
-      setRoleError("You must be signed in to change your role.");
-      return;
-    }
-    setRoleSaving(true);
-    setRoleError("");
+  const handleUserRoleSave = async (userId: string) => {
+    const newRole = pendingRoles[userId];
+    if (!newRole) return;
+    setSavingUserId(userId);
     try {
-      await setDoc(doc(db, "users", user.id), { role: selectedRole }, { merge: true });
-      // Update Zustand store immediately so UI reflects the change without re-login
-      useAuthStore.setState({ role: selectedRole });
-      setRoleSaved(true);
-      setTimeout(() => setRoleSaved(false), 4000);
+      await setDoc(doc(db, "users", userId), { role: newRole }, { merge: true });
+      setManagedUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u)));
+      setSavedUserId(userId);
+      setTimeout(() => setSavedUserId(null), 3000);
     } catch (err: any) {
-      setRoleError(err.message ?? "Failed to save role. Check Firestore permissions.");
+      setUsersError(err.message ?? "Failed to update role. Check Firestore permissions.");
     } finally {
-      setRoleSaving(false);
+      setSavingUserId(null);
     }
   };
 
@@ -184,19 +201,20 @@ export function SettingsPage() {
         <TabsContent value="role">
           <Card>
             <CardHeader>
-              <CardTitle>System Role</CardTitle>
+              <CardTitle>{isAdmin ? "User & Role Management" : "System Role"}</CardTitle>
               <CardDescription>
-                Your role controls which modules and data you can access. Changes take effect
-                immediately — no sign-out required.
+                {isAdmin
+                  ? "As an Admin, you can view every user and change their role. Role changes take effect immediately for that user — no sign-out required."
+                  : "Your role controls which modules and data you can access. Only an Admin can change it."}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Current role badge */}
+              {/* Current role badge (everyone sees their own) */}
               <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
                 <Shield className="h-5 w-5 text-muted-foreground" />
                 <div>
                   <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
-                    Current role (live from Firestore)
+                    Your current role (live from Firestore)
                   </p>
                   <Badge className={`mt-1 ${roleMeta[currentRole ?? "Practitioner"].color}`}>
                     {currentRole ?? "Practitioner"}
@@ -204,70 +222,70 @@ export function SettingsPage() {
                 </div>
               </div>
 
-              {/* Role selector */}
-              <div className="space-y-2">
-                <Label>Select New Role</Label>
-                <div className="grid gap-3">
-                  {(ROLES as readonly Role[]).map((r) => (
-                    <label
-                      key={r}
-                      className={`flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-all hover:border-primary/50 ${
-                        selectedRole === r
-                          ? "border-primary bg-primary/5 ring-1 ring-primary"
-                          : "border-border"
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="role"
-                        value={r}
-                        checked={selectedRole === r}
-                        onChange={() => setSelectedRole(r)}
-                        className="mt-0.5 accent-primary"
-                      />
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <Badge className={roleMeta[r].color}>{r}</Badge>
-                          {r === currentRole && (
-                            <span className="text-xs text-muted-foreground">(current)</span>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-1">{roleMeta[r].description}</p>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              {/* Error */}
-              {roleError && (
-                <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 text-sm text-red-700 dark:text-red-400">
+              {!isAdmin && (
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-slate-50 dark:bg-slate-900/40 border text-sm text-muted-foreground">
                   <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                  {roleError}
+                  If you need a different role, ask an Admin to update it from this same screen.
                 </div>
               )}
 
-              {/* Success */}
-              {roleSaved && (
-                <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/50 text-sm text-emerald-700 dark:text-emerald-400">
-                  <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
-                  Role updated to <strong>{selectedRole}</strong> — active now.
+              {isAdmin && (
+                <div className="space-y-3">
+                  <Label>All Users</Label>
+
+                  {usersLoading && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground p-3">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Loading users…
+                    </div>
+                  )}
+
+                  {usersError && (
+                    <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 text-sm text-red-700 dark:text-red-400">
+                      <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                      {usersError}
+                    </div>
+                  )}
+
+                  {!usersLoading && managedUsers.map((u) => {
+                    const pending = pendingRoles[u.id] ?? u.role;
+                    const isDirty = pending !== u.role;
+                    return (
+                      <div key={u.id} className="flex items-center gap-3 p-3 rounded-lg border">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{u.email ?? u.id}</p>
+                          <Badge className={`mt-1 ${roleMeta[u.role].color}`}>{u.role}</Badge>
+                        </div>
+                        <select
+                          className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                          value={pending}
+                          onChange={(e) =>
+                            setPendingRoles((prev) => ({ ...prev, [u.id]: e.target.value as Role }))
+                          }
+                        >
+                          {(ROLES as readonly Role[]).map((r) => (
+                            <option key={r} value={r}>{r}</option>
+                          ))}
+                        </select>
+                        <Button
+                          size="sm"
+                          disabled={!isDirty || savingUserId === u.id}
+                          onClick={() => handleUserRoleSave(u.id)}
+                          className="bg-indigo-600 hover:bg-indigo-700 gap-2"
+                        >
+                          {savingUserId === u.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : savedUserId === u.id ? (
+                            <CheckCircle2 className="h-4 w-4" />
+                          ) : (
+                            "Save"
+                          )}
+                        </Button>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
-            <CardFooter className="border-t px-6 py-4 flex justify-end bg-slate-50/50 dark:bg-slate-900/20">
-              <Button
-                onClick={handleRoleSave}
-                disabled={roleSaving || selectedRole === currentRole}
-                className="bg-indigo-600 hover:bg-indigo-700 gap-2"
-              >
-                {roleSaving ? (
-                  <><Loader2 className="h-4 w-4 animate-spin" /> Saving…</>
-                ) : (
-                  <><Shield className="h-4 w-4" /> Apply Role</>
-                )}
-              </Button>
-            </CardFooter>
           </Card>
         </TabsContent>
 

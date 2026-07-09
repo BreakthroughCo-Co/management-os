@@ -16,7 +16,7 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   googleAccessToken: string | null;
-  loginWithGoogle: (role: Role) => Promise<void>;
+  loginWithGoogle: () => Promise<void>;
   logout: () => void;
   resetTimeout: () => void;
 }
@@ -32,7 +32,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isLoading: true,
   googleAccessToken: null,
   
-  loginWithGoogle: async (role) => {
+  loginWithGoogle: async () => {
     try {
       const provider = new GoogleAuthProvider();
       // Request necessary Google Workspace scopes
@@ -46,12 +46,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const credential = GoogleAuthProvider.credentialFromResult(result);
       const token = credential?.accessToken || null;
 
-      // Ensure user role exists in Firestore
-      // Note: If Firestore API is disabled, this will fail. We use a try/catch to ensure login succeeds even if Firestore fails.
+      // SECURITY: role is never supplied by the client. New users are created
+      // as 'Viewer' (the only role firestore.rules permits on doc creation);
+      // an existing user's role is left untouched. Only an Admin can promote
+      // someone to a higher role, via Settings > User Management.
+      let resolvedRole: Role = 'Viewer';
       try {
-        await setDoc(doc(db, 'users', user.uid), { role }, { merge: true });
+        const userRef = doc(db, 'users', user.uid);
+        const existing = await getDoc(userRef);
+        if (existing.exists() && existing.data().role) {
+          resolvedRole = existing.data().role as Role;
+        } else {
+          await setDoc(userRef, { role: 'Viewer' });
+        }
       } catch (firestoreError) {
-        console.warn("Could not save role to Firestore (API might be disabled):", firestoreError);
+        console.warn("Could not read/create user role in Firestore (API might be disabled):", firestoreError);
       }
       
       set({ 
@@ -61,7 +70,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           email: user.email || "",
           avatar: user.photoURL || undefined
         },
-        role, 
+        role: resolvedRole, 
         isAuthenticated: true,
         googleAccessToken: token
       });
@@ -93,17 +102,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 if (typeof window !== 'undefined') {
   onAuthStateChanged(auth, async (user) => {
     if (user) {
-      let defaultRole: Role = 'Practitioner';
-      if (user.email === 'admin@breakthrough.com') {
-        defaultRole = 'Admin';
-      } else if (user.email?.includes('coordinator')) {
-        defaultRole = 'Coordinator';
-      }
-      
-      // Set authenticated state immediately so UI transitions are not blocked
+      // SECURITY: never infer role from email address or hardcode an elevated
+      // default — that was a client-side privilege-escalation vector. Default
+      // to the lowest-privilege role until the real role loads from Firestore.
       useAuthStore.setState({
-        user: { id: user.uid, name: "Demo User", email: user.email || "demo@example.com" },
-        role: defaultRole,
+        user: { id: user.uid, name: user.displayName || "User", email: user.email || "" },
+        role: 'Viewer',
         isAuthenticated: true,
         isLoading: false
       });
@@ -111,11 +115,17 @@ if (typeof window !== 'undefined') {
       
       // Load user role asynchronously in the background
       try {
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        const userRef = doc(db, 'users', user.uid);
+        const userDoc = await getDoc(userRef);
         if (userDoc.exists() && userDoc.data().role) {
           useAuthStore.setState({
             role: userDoc.data().role as Role
           });
+        } else {
+          // First sign-in for this user: create their profile as Viewer.
+          // firestore.rules only permits role == 'Viewer' on create, so any
+          // promotion must come from an Admin afterward.
+          await setDoc(userRef, { role: 'Viewer' });
         }
       } catch (firestoreError) {
         console.error("Firestore error loading user role:", firestoreError);
