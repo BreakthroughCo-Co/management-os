@@ -20,6 +20,7 @@ rules_version = '2';
 //   complianceChecklists  → Manager+ read+write
 //   serviceAgreements     → Manager+ read+write
 //   billingRecords        → Manager+ read+write
+//   claims                → Manager+ read+write (PRODA/NDIS claim approve-reject)
 //   legoSessions          → clinical staff read+write; Manager read
 //   caseNotes             → clinical staff read+write (Practitioner: own only)
 //   knowledgeBase         → any auth read; Coordinator+ write
@@ -144,6 +145,14 @@ service cloud.firestore {
 
     // ── Billing Records ───────────────────────────────────────────────────────
     match /billingRecords/{docId} {
+      allow read, write: if isPracticeManager();
+    }
+
+    // ── PRODA / NDIS Claims ───────────────────────────────────────────────────
+    // Was previously unmatched by any rule and silently falling through to the
+    // default-deny at the bottom of this file — approve/reject would have
+    // failed with a permissions error against a real Firestore backend.
+    match /claims/{claimId} {
       allow read, write: if isPracticeManager();
     }
 
