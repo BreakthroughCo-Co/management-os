@@ -79,14 +79,46 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 };
 
 // RBAC Route Guard using Zustand
+// Restored 2026-07 after being found completely disabled (a prior commit's
+// message literally read "RBAC bypass") — every route was rendering for any
+// authenticated user regardless of role. Firestore rules remained the real
+// data boundary throughout, so this wasn't a data-exposure bug on its own,
+// but it meant no route was actually gated in the UI, which matters even
+// more now that a restricted-by-design Client role exists.
 const RoleRoute = ({ children, allowed }: { children: React.ReactNode, allowed: string[] }) => {
-  const { isLoading } = useAuthStore();
-  
+  const { role, isLoading } = useAuthStore();
+
   if (isLoading) {
     return <LoadingFallback />;
   }
 
-  // Access restrictions have been bypassed globally
+  // Fail closed: an unresolved role defaults to the lowest-privilege role,
+  // not a mid-tier one. (The previous restored version of this file
+  // defaulted to "Practitioner", which is fail-open — worth fixing while
+  // restoring this.) In practice this branch is rare: useAuthStore resolves
+  // role to 'Viewer' synchronously on auth state change, before the real
+  // role loads from Firestore, so role is essentially never null here.
+  const activeRole = role || "Viewer";
+
+  if (!allowed.includes(activeRole)) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] text-center p-6 space-y-4">
+        <div className="h-12 w-12 bg-red-100 dark:bg-red-950/20 text-red-600 rounded-full flex items-center justify-center">
+          <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        </div>
+        <h2 className="text-xl font-bold">Access Restricted</h2>
+        <p className="text-muted-foreground text-sm max-w-md">Your active role ({activeRole}) does not have permission to access this resource.</p>
+        <button
+          onClick={() => window.location.href = "/dashboard"}
+          className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:opacity-90 transition-opacity"
+        >
+          Return to Dashboard
+        </button>
+      </div>
+    );
+  }
   return <>{children}</>;
 };
 
