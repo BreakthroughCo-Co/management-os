@@ -23,6 +23,8 @@ rules_version = '2';
 //   claims                → Manager+ read+write (PRODA/NDIS claim approve-reject)
 //   calendar_events       → any auth read; Coordinator+ write
 //   analytics             → any staff read; client write denied (Cloud Functions only)
+//   documents             → read requires 'all' or caller's role in allowedRoles; Coordinator+ write
+//   secure_messages       → any staff read+write (shared team channel, not per-DM)
 //   legoSessions          → clinical staff read+write; Manager read
 //   caseNotes             → clinical staff read+write (Practitioner: own only)
 //   knowledgeBase         → any auth read; Coordinator+ write
@@ -214,6 +216,30 @@ service cloud.firestore {
     match /analytics/{docId} {
       allow read:  if isAnyStaff();
       allow write: if false;
+    }
+
+    // ── Documents (shared document library / RAG source material) ─────────────
+    // Was previously unmatched — DocumentLibrary and the RAG knowledge features
+    // would have failed with permissions errors against a real backend.
+    // Read access follows the document's own allowedRoles field: 'all' means
+    // any authenticated staff member, otherwise the caller's role must appear
+    // in that list. Uploads/deletes are Coordinator+ only.
+    match /documents/{docId} {
+      allow read:   if isAnyStaff() &&
+                       ('all' in resource.data.allowedRoles || userRole() in resource.data.allowedRoles);
+      allow create: if isCoordinator();
+      allow update, delete: if isCoordinator();
+    }
+
+    // ── Secure Messages ─────────────────────────────────────────────────────────
+    // Was previously unmatched — SecureMessaging would have failed with
+    // permissions errors against a real backend. MessageRepository.ts reads
+    // the whole collection with no per-conversation filter, i.e. this is
+    // implemented as one shared team channel, not per-user DMs — the rule
+    // matches that: any staff member can read and post.
+    match /secure_messages/{messageId} {
+      allow read, create: if isAnyStaff();
+      allow update, delete: if isAdmin();
     }
 
     // ── Default: deny everything not explicitly matched ───────────────────────
