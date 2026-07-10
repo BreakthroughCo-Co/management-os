@@ -21,6 +21,8 @@ rules_version = '2';
 //   serviceAgreements     → Manager+ read+write
 //   billingRecords        → Manager+ read+write
 //   claims                → Manager+ read+write (PRODA/NDIS claim approve-reject)
+//   calendar_events       → any auth read; Coordinator+ write
+//   analytics             → any staff read; client write denied (Cloud Functions only)
 //   legoSessions          → clinical staff read+write; Manager read
 //   caseNotes             → clinical staff read+write (Practitioner: own only)
 //   knowledgeBase         → any auth read; Coordinator+ write
@@ -189,6 +191,29 @@ service cloud.firestore {
       allow update: if isAuth() && resource.data.userId == request.auth.uid &&
                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
       allow delete: if isAdmin();
+    }
+
+    // ── Calendar Events ────────────────────────────────────────────────────────
+    // Was previously unmatched by any rule, same silent-fallthrough issue as
+    // claims — the calendar UI would have failed with a permissions error
+    // against the real backend.
+    match /calendar_events/{eventId} {
+      allow read:           if isAuth();
+      allow create, update: if isCoordinator();
+      allow delete:         if isCoordinator();
+    }
+
+    // ── Analytics (dashboard metrics) ───────────────────────────────────────────
+    // Written exclusively by the aggregateDashboardMetricsScheduled /
+    // refreshDashboardMetrics Cloud Functions via the Admin SDK, which bypasses
+    // these rules entirely — so `allow write: if false` here blocks direct
+    // client writes without blocking the functions that actually populate it.
+    // This mirrors the auditLogs pattern (Admin-SDK-only writes), but readable
+    // by any staff member since dashboard KPIs aren't as sensitive as raw
+    // audit trail entries.
+    match /analytics/{docId} {
+      allow read:  if isAnyStaff();
+      allow write: if false;
     }
 
     // ── Default: deny everything not explicitly matched ───────────────────────

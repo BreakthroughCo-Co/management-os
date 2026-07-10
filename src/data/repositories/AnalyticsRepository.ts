@@ -1,6 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
-import { db } from '../../lib/firebase';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { db, app } from '../../lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 export interface DashboardStats {
   activeClients: { value: string; change: string };
@@ -123,6 +124,25 @@ export const useDashboardStatsQuery = () => {
           burnGauge: MOCK_BURN_GAUGE
         };
       }
+    },
+  });
+};
+
+export const useRefreshDashboardMetricsMutation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const functions = getFunctions(app);
+      const refreshDashboardMetrics = httpsCallable(functions, 'refreshDashboardMetrics');
+      const result = await refreshDashboardMetrics();
+      return result.data as { success: boolean; stats: DashboardStats; claims: ClaimDataPoint[]; burnGauge: BurnRateGauge };
+    },
+    onSuccess: () => {
+      // Server has just written fresh analytics/dashboard_stats — refetch
+      // rather than trusting the callable's return shape to exactly match
+      // what useDashboardStatsQuery expects (it's close, but they're
+      // independently maintained and could drift).
+      queryClient.invalidateQueries({ queryKey: ['dashboard_stats'] });
     },
   });
 };

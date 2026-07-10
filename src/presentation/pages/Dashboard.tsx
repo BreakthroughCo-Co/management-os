@@ -1,6 +1,7 @@
-import { Activity, Users, FileText, CheckCircle2, TrendingUp } from "lucide-react";
+import { Activity, Users, FileText, CheckCircle2, TrendingUp, RefreshCw } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { useDashboardStatsQuery, HeatmapDataPoint, BurnRateGauge } from "@/data/repositories/AnalyticsRepository";
+import { useDashboardStatsQuery, useRefreshDashboardMetricsMutation, HeatmapDataPoint, BurnRateGauge } from "@/data/repositories/AnalyticsRepository";
+import { useAuthStore } from "@/store/useAuthStore";
 import { GoogleCalendarWidget } from "../components/workspace/GoogleCalendarWidget";
 import { GoogleDriveWidget } from "../components/workspace/GoogleDriveWidget";
 
@@ -119,6 +120,9 @@ function ChartSkeleton() {
 
 export function Dashboard() {
   const { data, isLoading } = useDashboardStatsQuery();
+  const refreshMetrics = useRefreshDashboardMetricsMutation();
+  const role = useAuthStore((s) => s.role);
+  const canRefresh = role === "Admin" || role === "Coordinator" || role === "Practice Manager";
 
   if (isLoading || !data) {
     return (
@@ -143,6 +147,19 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {canRefresh && (
+        <div className="flex justify-end">
+          <button
+            onClick={() => refreshMetrics.mutate()}
+            disabled={refreshMetrics.isPending}
+            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors"
+            title="Metrics refresh automatically every 30 minutes — use this to force an immediate update"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshMetrics.isPending ? "animate-spin" : ""}`} />
+            {refreshMetrics.isPending ? "Refreshing…" : "Refresh metrics"}
+          </button>
+        </div>
+      )}
       {/* Stat Cards */}
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (
