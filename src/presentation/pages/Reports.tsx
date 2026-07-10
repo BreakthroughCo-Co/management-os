@@ -3,8 +3,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/pre
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/presentation/components/ui/table";
 import { Badge } from "@/presentation/components/ui/badge";
 import { Button } from "@/presentation/components/ui/button";
-import { FileText, Send, Download, BarChart3, Users, TrendingUp, CheckCircle2, Printer } from "lucide-react";
+import { FileText, Send, Download, BarChart3, Users, TrendingUp, CheckCircle2, Printer, FileSpreadsheet } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { useReportsQuery, useCreateReportMutation, useSendReportMutation, Report } from "@/data/repositories/ReportRepository";
+import jsPDF from "jspdf";
 
 const workloadData = [
   { name: "Dr. Jenkins", caseload: 14, capacity: 18 },
@@ -14,13 +16,83 @@ const workloadData = [
   { name: "C. Lee", caseload: 6, capacity: 12 },
 ];
 
+// ── CSV export ────────────────────────────────────────────────────────────
+// Escapes per RFC 4180: wrap in quotes and double up any embedded quotes.
+// Report names/recipients are free text, so this matters (a comma or quote
+// in a report title shouldn't silently corrupt the column count).
+function csvEscape(value: string): string {
+  if (/[",\n]/.test(value)) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
+function downloadReportsCsv(reports: Report[]) {
+  const header = ["Report Title", "Type", "Creation Date", "Authorized Recipient", "Status"];
+  const rows = reports.map((r) => [r.name, r.type, r.date, r.recipient, r.status]);
+  const csv = [header, ...rows].map((row) => row.map(csvEscape).join(",")).join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `report-ledger-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── Single-report PDF export ────────────────────────────────────────────
+// Report Repository currently stores metadata only (title, type, date,
+// recipient, status) — there's no rich report body/content model yet, so
+// this generates a one-page metadata summary rather than pretending to
+// reproduce a full clinical report it doesn't have the content for.
+function downloadReportPdf(report: Report) {
+  const pdf = new jsPDF();
+  pdf.setFontSize(16);
+  pdf.text("Breakthrough Coaching & Consulting", 14, 20);
+  pdf.setFontSize(11);
+  pdf.setTextColor(100);
+  pdf.text("NDIS Registered Behaviour Support Provider", 14, 27);
+
+  pdf.setDrawColor(220);
+  pdf.line(14, 32, 196, 32);
+
+  pdf.setFontSize(14);
+  pdf.setTextColor(0);
+  pdf.text(report.name, 14, 44);
+
+  const fields: [string, string][] = [
+    ["Type", report.type],
+    ["Creation Date", report.date],
+    ["Authorized Recipient", report.recipient],
+    ["Status", report.status],
+  ];
+
+  let y = 58;
+  pdf.setFontSize(11);
+  for (const [label, value] of fields) {
+    pdf.setTextColor(120);
+    pdf.text(`${label}:`, 14, y);
+    pdf.setTextColor(0);
+    pdf.text(value, 60, y);
+    y += 9;
+  }
+
+  pdf.setFontSize(9);
+  pdf.setTextColor(150);
+  pdf.text(
+    `Generated ${new Date().toLocaleString()} — metadata summary only; full report content is managed separately.`,
+    14,
+    280
+  );
+
+  pdf.save(`${report.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.pdf`);
+}
+
 export function Reports() {
-  const [reports, setReports] = useState([
-    { name: "Therapy Progress Summary - Q3", type: "Clinical", date: "2026-07-04", recipient: "NDIS Commission (Portal Upload)", status: "Sent" },
-    { name: "Restrictive Practices Audit - June", type: "Compliance", date: "2026-07-01", recipient: "NDS Auditing Board", status: "Approved" },
-    { name: "Participant Rollover Review - Charlie Davis", type: "Internal Review", date: "2026-06-15", recipient: "Clinical Lead", status: "Draft" }
-  ]);
-  
+  const { data: reports = [], isLoading } = useReportsQuery();
+  const createReport = useCreateReportMutation();
+  const sendReport = useSendReportMutation();
+
   const [compilingStep, setCompilingStep] = useState<null | "Drafting" | "Compliance Auditing" | "Compiling">(null);
 
   const kpis = [
@@ -43,15 +115,13 @@ export function Reports() {
         
         setTimeout(() => {
           setCompilingStep(null);
-          // Add compiled report to reports list
-          const newReport = {
+          createReport.mutate({
             name: "AI Compiled Therapy Report - Charlie Davis",
             type: "Clinical",
             date: new Date().toISOString().split('T')[0],
             recipient: "NDIS Commission (Portal Upload)",
             status: "Approved"
-          };
-          setReports(prev => [newReport, ...prev]);
+          });
         }, 1500);
       }, 1500);
     }, 1500);
@@ -74,6 +144,14 @@ export function Reports() {
           </Button>
           <Button onClick={printReport} variant="outline" className="border-border">
             <Printer className="mr-2 h-4 w-4" /> Print Executive Summary
+          </Button>
+          <Button
+            onClick={() => downloadReportsCsv(reports)}
+            disabled={reports.length === 0}
+            variant="outline"
+            className="border-border"
+          >
+            <FileSpreadsheet className="mr-2 h-4 w-4" /> Export CSV
           </Button>
         </div>
       </div>
@@ -168,8 +246,22 @@ export function Reports() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {reports.map((r, idx) => (
-                  <TableRow key={idx}>
+                {isLoading && (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center text-sm text-muted-foreground py-8">
+                      Loading reports…
+                    </TableCell>
+                  </TableRow>
+                )}
+                {!isLoading && reports.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center text-sm text-muted-foreground py-8">
+                      No reports yet.
+                    </TableCell>
+                  </TableRow>
+                )}
+                {reports.map((r) => (
+                  <TableRow key={r.id}>
                     <TableCell className="font-semibold">{r.name}</TableCell>
                     <TableCell><Badge variant="outline">{r.type}</Badge></TableCell>
                     <TableCell className="text-xs text-muted-foreground">{r.date}</TableCell>
@@ -180,8 +272,18 @@ export function Reports() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right space-x-1 whitespace-nowrap">
-                      <Button variant="ghost" size="sm"><Download className="h-4 w-4 mr-1" />PDF</Button>
-                      {r.status === "Draft" && <Button size="sm"><Send className="h-4 w-4 mr-1" />Send</Button>}
+                      <Button variant="ghost" size="sm" onClick={() => downloadReportPdf(r)}>
+                        <Download className="h-4 w-4 mr-1" />PDF
+                      </Button>
+                      {r.status === "Draft" && (
+                        <Button
+                          size="sm"
+                          onClick={() => sendReport.mutate(r.id)}
+                          disabled={sendReport.isPending}
+                        >
+                          <Send className="h-4 w-4 mr-1" />Send
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}

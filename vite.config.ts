@@ -60,6 +60,14 @@ export default defineConfig({
             return 'vendor-icons';
           }
 
+          // ── Vendor: jsPDF (only needed on the Reports page — kept out
+          // of vendor-misc so it doesn't add weight to every route) ────
+          if (id.includes('node_modules/jspdf') ||
+              id.includes('node_modules/fflate') ||
+              id.includes('node_modules/@jspdf/')) {
+            return 'vendor-pdf';
+          }
+
           // ── Vendor: Remaining third-party deps ──────────────────────
           if (id.includes('node_modules/')) {
             return 'vendor-misc';

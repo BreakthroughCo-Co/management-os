@@ -25,6 +25,7 @@ rules_version = '2';
 //   analytics             → any staff read; client write denied (Cloud Functions only)
 //   documents             → read requires 'all' or caller's role in allowedRoles; Coordinator+ write
 //   secure_messages       → any staff read+write (shared team channel, not per-DM)
+//   reports                → clinical staff read+create; Coordinator+ update/delete
 //   legoSessions          → clinical staff read+write; Manager read
 //   caseNotes             → clinical staff read+write (Practitioner: own only)
 //   knowledgeBase         → any auth read; Coordinator+ write
@@ -240,6 +241,12 @@ service cloud.firestore {
     match /secure_messages/{messageId} {
       allow read, create: if isAnyStaff();
       allow update, delete: if isAdmin();
+    }
+
+    // ── Reports (compliance/clinical report ledger) ─────────────────────────────
+    match /reports/{reportId} {
+      allow read, create: if isClinicalStaff();
+      allow update, delete: if isCoordinator();
     }
 
     // ── Default: deny everything not explicitly matched ───────────────────────
