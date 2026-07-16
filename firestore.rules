@@ -10,7 +10,7 @@ rules_version = '2';
 //
 // Access matrix:
 //   users                 → owner read/write their own doc; Admin reads all
-//   clients               → clinical staff & managers read; Coordinator+ write
+//   clients               → clinical staff & managers read; Client reads own record only; Coordinator+ write
 //   abcLogs               → clinical staff read+write; Viewer read
 //   bspPlans              → clinical staff read+write; Viewer read
 //   ndisPlans             → all staff read; Manager+ write
@@ -73,6 +73,28 @@ service cloud.firestore {
       return isAuth() && request.auth.uid == userId;
     }
 
+    // ── Client-role helpers ─────────────────────────────────────────────────
+    // A Client is deliberately NOT included in isAnyStaff() or any other
+    // staff convenience helper above — by default a Client has zero access
+    // to any collection unless a rule explicitly grants it below, scoped to
+    // their own linked record only. That link lives on their own user doc
+    // (/users/{uid}.clientId), set by an Admin via Settings > Role
+    // Management, alongside the role itself — never settable by the client
+    // themselves (see the /users/{userId} update rule above, which only
+    // allows an owner to leave `role` unchanged, and `clientId` is written
+    // in the same admin-only setDoc call as role in practice, though it
+    // isn't separately locked here since role already gates who can become
+    // a Client in the first place).
+    function isClient() {
+      return userRole() == 'Client';
+    }
+
+    function myClientId() {
+      return isAuth()
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('clientId', '')
+        : '';
+    }
+
     // ── User Profiles ─────────────────────────────────────────────────────────
     // Every authenticated user may read and update their own profile.
     // Admins may read any user profile. Deletion is Admin-only.
@@ -91,7 +113,8 @@ service cloud.firestore {
 
     // ── Clients ───────────────────────────────────────────────────────────────
     match /clients/{clientId} {
-      allow read:          if isClinicalStaff() || isPracticeManager();
+      allow read:          if isClinicalStaff() || isPracticeManager() ||
+                               (isClient() && myClientId() == clientId);
       allow create, update: if isCoordinator();
       allow delete:        if isAdmin();
     }

@@ -15,6 +15,7 @@ interface ManagedUser {
   id: string;
   email?: string;
   role: Role;
+  clientId?: string;
 }
 
 export function SettingsPage() {
@@ -32,6 +33,7 @@ export function SettingsPage() {
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersError, setUsersError] = useState("");
   const [pendingRoles, setPendingRoles] = useState<Record<string, Role>>({});
+  const [pendingClientIds, setPendingClientIds] = useState<Record<string, string>>({});
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
   const [savedUserId, setSavedUserId] = useState<string | null>(null);
 
@@ -45,6 +47,7 @@ export function SettingsPage() {
           id: d.id,
           email: d.data().email as string | undefined,
           role: (d.data().role as Role) ?? "Viewer",
+          clientId: d.data().clientId as string | undefined,
         }));
         setManagedUsers(users);
       })
@@ -55,14 +58,28 @@ export function SettingsPage() {
   const handleUserRoleSave = async (userId: string) => {
     const newRole = pendingRoles[userId];
     if (!newRole) return;
+    const newClientId = pendingClientIds[userId]?.trim();
+    if (newRole === "Client" && !newClientId) {
+      setUsersError("A Client role must be linked to a client record — enter a Client ID before saving.");
+      return;
+    }
     setSavingUserId(userId);
     try {
       await setDoc(
         doc(db, "users", userId),
-        { role: newRole, roleChangedBy: user?.id ?? "unknown" },
+        {
+          role: newRole,
+          roleChangedBy: user?.id ?? "unknown",
+          // Only persist clientId for the Client role — clearing it for
+          // every other role means an old link can't silently linger if
+          // an Admin later reassigns this user away from Client.
+          clientId: newRole === "Client" ? newClientId : null,
+        },
         { merge: true }
       );
-      setManagedUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u)));
+      setManagedUsers((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, role: newRole, clientId: newRole === "Client" ? newClientId : undefined } : u))
+      );
       setSavedUserId(userId);
       setTimeout(() => setSavedUserId(null), 3000);
     } catch (err: any) {
@@ -116,6 +133,10 @@ export function SettingsPage() {
     Viewer: {
       color: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400",
       description: "Read-only access to portal messaging and shared calendar.",
+    },
+    Client: {
+      color: "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400",
+      description: "Participant/family portal — own record, sessions, messages, and consult links only.",
     },
   };
 
@@ -252,12 +273,17 @@ export function SettingsPage() {
 
                   {!usersLoading && managedUsers.map((u) => {
                     const pending = pendingRoles[u.id] ?? u.role;
-                    const isDirty = pending !== u.role;
+                    const pendingClientId = pendingClientIds[u.id] ?? u.clientId ?? "";
+                    const isDirty =
+                      pending !== u.role || (pending === "Client" && pendingClientId !== (u.clientId ?? ""));
                     return (
-                      <div key={u.id} className="flex items-center gap-3 p-3 rounded-lg border">
+                      <div key={u.id} className="flex items-center gap-3 p-3 rounded-lg border flex-wrap">
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">{u.email ?? u.id}</p>
                           <Badge className={`mt-1 ${roleMeta[u.role].color}`}>{u.role}</Badge>
+                          {u.role === "Client" && u.clientId && (
+                            <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">→ {u.clientId}</p>
+                          )}
                         </div>
                         <select
                           className="h-9 rounded-md border border-input bg-background px-2 text-sm"
@@ -270,6 +296,16 @@ export function SettingsPage() {
                             <option key={r} value={r}>{r}</option>
                           ))}
                         </select>
+                        {pending === "Client" && (
+                          <Input
+                            value={pendingClientId}
+                            onChange={(e) =>
+                              setPendingClientIds((prev) => ({ ...prev, [u.id]: e.target.value }))
+                            }
+                            placeholder="Client ID (from Client List)"
+                            className="h-9 w-48 text-xs font-mono"
+                          />
+                        )}
                         <Button
                           size="sm"
                           disabled={!isDirty || savingUserId === u.id}

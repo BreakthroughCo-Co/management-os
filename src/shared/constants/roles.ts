@@ -10,6 +10,7 @@ export const ROLES = [
   "Practice Manager",
   "Practitioner",
   "Viewer",
+  "Client",
 ] as const;
 
 export type Role = (typeof ROLES)[number];
